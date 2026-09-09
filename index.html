@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D eAarth • Seeded Voxel Globe</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="hud">
+    <div class="brand">🌍 <b>3D eAarth</b><span>Voxel Globe</span></div>
+    <div class="controls">
+      <input id="seed" value="TANVIR-2026" aria-label="World seed" />
+      <button id="generate">Generate World</button>
+      <button id="random">🎲 Random Seed</button>
+    </div>
+    <div class="hint">Drag to orbit · Wheel to zoom · Seed = same world every time</div>
+  </div>
+  <div id="stats"></div>
+  <div id="loading">Generating voxel Earth…</div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
