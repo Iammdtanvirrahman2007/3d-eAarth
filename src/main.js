@@ -5,7 +5,8 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x01040b);
 
 const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 500);
-camera.position.set(0, 7, 72);
+// Make Earth feel enormous in frame. The closer, larger globe reduces the visible curvature.
+camera.position.set(0, 6, 62);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.65));
@@ -19,7 +20,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.055;
 controls.enablePan = false;
-controls.minDistance = 43;
+controls.minDistance = 38;
 controls.maxDistance = 115;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.28;
@@ -71,9 +72,10 @@ sunPoint.position.copy(sunGlow.position);
 scene.add(sunPoint);
 
 // Stage 1: the globe only. No player, caves, buildings or gameplay yet.
-const VOXEL = 1.28;
-const BASE_RADIUS = 20.5;
-const LAND_HEIGHT = 3.25;
+// Larger planet + slightly smaller blocks = a much denser, closer Earth.
+const VOXEL = 1.20;
+const BASE_RADIUS = 25.5;
+const LAND_HEIGHT = 3.0;
 const GRID_RADIUS = Math.ceil(BASE_RADIUS + LAND_HEIGHT + 2);
 const GLOBE_SCALE = VOXEL;
 let globe = null;
@@ -151,14 +153,14 @@ function angularDistance(a, b) {
 // Earth-like continent layout. The seed changes coast detail, terrain and biome
 // variation while the broad continental silhouette remains recognisable.
 const continents = [
-  { lon: -1.78, lat: 0.63, sx: 0.82, sy: 0.47, power: 1.0 }, // North America
-  { lon: -1.05, lat: -0.18, sx: 0.42, sy: 0.78, power: 1.05 }, // South America
-  { lon: -0.42, lat: 0.10, sx: 0.58, sy: 0.70, power: 1.0 }, // Africa
-  { lon: 0.98, lat: 0.74, sx: 1.65, sy: 0.50, power: 1.0 }, // Europe + Asia
-  { lon: 1.35, lat: 0.15, sx: 0.46, sy: 0.40, power: 0.95 }, // Arabia / India
-  { lon: 2.34, lat: -0.44, sx: 0.55, sy: 0.30, power: 1.0 }, // Australia
-  { lon: -0.78, lat: 1.26, sx: 0.23, sy: 0.22, power: 1.0 }, // Greenland
-  { lon: 0.05, lat: -1.18, sx: 2.8, sy: 0.22, power: 1.0 } // Antarctica
+  { lon: -1.78, lat: 0.63, sx: 0.82, sy: 0.47, power: 1.0 },
+  { lon: -1.05, lat: -0.18, sx: 0.42, sy: 0.78, power: 1.05 },
+  { lon: -0.42, lat: 0.10, sx: 0.58, sy: 0.70, power: 1.0 },
+  { lon: 0.98, lat: 0.74, sx: 1.65, sy: 0.50, power: 1.0 },
+  { lon: 1.35, lat: 0.15, sx: 0.46, sy: 0.40, power: 0.95 },
+  { lon: 2.34, lat: -0.44, sx: 0.55, sy: 0.30, power: 1.0 },
+  { lon: -0.78, lat: 1.26, sx: 0.23, sy: 0.22, power: 1.0 },
+  { lon: 0.05, lat: -1.18, sx: 2.8, sy: 0.22, power: 1.0 }
 ];
 
 function continentScore(lon, lat) {
@@ -350,7 +352,7 @@ function makeGlobe(seedText) {
   globe.add(atmosphere);
 
   document.querySelector('#stats').textContent =
-    `Seed: ${seedText}  ·  ${total.toLocaleString()} voxel blocks  ·  Earth-like continents`;
+    `Seed: ${seedText}  ·  ${total.toLocaleString()} voxel blocks  ·  Giant Earth Globe`;
 }
 
 function generate() {
