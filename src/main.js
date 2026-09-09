@@ -3,10 +3,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x020611);
-scene.fog = new THREE.FogExp2(0x020611, 0.0035);
 
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 500);
-camera.position.set(0, 18, 76);
+camera.position.set(0, 10, 78);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
@@ -23,17 +22,17 @@ controls.minDistance = 42;
 controls.maxDistance = 125;
 controls.enablePan = false;
 controls.autoRotate = true;
-controls.autoRotateSpeed = 0.55;
+controls.autoRotateSpeed = 0.42;
 
-scene.add(new THREE.AmbientLight(0x9db8ff, 0.85));
-const sun = new THREE.DirectionalLight(0xffffff, 3.2);
+scene.add(new THREE.AmbientLight(0x9db8ff, 0.8));
+const sun = new THREE.DirectionalLight(0xffffff, 3.3);
 sun.position.set(45, 30, 35);
 scene.add(sun);
-const rim = new THREE.DirectionalLight(0x6f9dff, 1.25);
+const rim = new THREE.DirectionalLight(0x6f9dff, 1.15);
 rim.position.set(-45, -5, -35);
 scene.add(rim);
 
-// Local star field, so the project has no image assets to load.
+// Clean procedural star field.
 const starGeo = new THREE.BufferGeometry();
 const starCount = 2600;
 const starPos = new Float32Array(starCount * 3);
@@ -51,25 +50,27 @@ for (let i = 0; i < starCount; i++) {
   starPos[i * 3 + 2] = Math.sin(a) * s;
 }
 starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.42, sizeAttenuation: true, transparent: true, opacity: 0.82 })));
+scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
+  color: 0xffffff,
+  size: 0.42,
+  sizeAttenuation: true,
+  transparent: true,
+  opacity: 0.82
+})));
 
+// Stage 1: only the globe. No player, trees, caves, terrain towers or gameplay yet.
 const RADIUS = 28;
-const LAT_STEPS = 48;
-const LON_STEPS = 96;
-const BLOCK = 1.72;
-const SEA_LEVEL = 2;
-const MAX_HEIGHT = 7;
-const BLOCK_OVERLAP = 1.025;
-let worldGroup = null;
+const LAT_STEPS = 56;
+const LON_STEPS = 112;
+const BLOCK = 1.58;
+let globe = null;
 
 const palette = {
-  water: 0x246da7,
-  sand: 0xd8bf78,
-  grass: 0x4d9a4c,
-  forest: 0x2e713c,
-  rock: 0x727b82,
-  snow: 0xe9f2f6,
-  dirt: 0x795a3d,
+  ocean: 0x1767a8,
+  shallow: 0x2388c7,
+  land: 0x4d9447,
+  dry: 0x9c844f,
+  snow: 0xe8f0f2
 };
 
 function hashString(str) {
@@ -90,142 +91,136 @@ function hash3(x, y, z, seed) {
   return (h >>> 0) / 4294967295;
 }
 
-function fade(t) { return t * t * (3 - 2 * t); }
+function fade(t) {
+  return t * t * (3 - 2 * t);
+}
 
-function valueNoise3(x, y, z, seed) {
+function noise3(x, y, z, seed) {
   const x0 = Math.floor(x), y0 = Math.floor(y), z0 = Math.floor(z);
   const fx = fade(x - x0), fy = fade(y - y0), fz = fade(z - z0);
   const v = (dx, dy, dz) => hash3(x0 + dx, y0 + dy, z0 + dz, seed);
-  const x00 = THREE.MathUtils.lerp(v(0,0,0), v(1,0,0), fx);
-  const x10 = THREE.MathUtils.lerp(v(0,1,0), v(1,1,0), fx);
-  const x01 = THREE.MathUtils.lerp(v(0,0,1), v(1,0,1), fx);
-  const x11 = THREE.MathUtils.lerp(v(0,1,1), v(1,1,1), fx);
-  return THREE.MathUtils.lerp(THREE.MathUtils.lerp(x00, x10, fy), THREE.MathUtils.lerp(x01, x11, fy), fz);
+  const a = THREE.MathUtils.lerp(v(0, 0, 0), v(1, 0, 0), fx);
+  const b = THREE.MathUtils.lerp(v(0, 1, 0), v(1, 1, 0), fx);
+  const c = THREE.MathUtils.lerp(v(0, 0, 1), v(1, 0, 1), fx);
+  const d = THREE.MathUtils.lerp(v(0, 1, 1), v(1, 1, 1), fx);
+  return THREE.MathUtils.lerp(
+    THREE.MathUtils.lerp(a, b, fy),
+    THREE.MathUtils.lerp(c, d, fy),
+    fz
+  );
 }
 
 function fbm(x, y, z, seed) {
-  let value = 0, amp = 0.5, freq = 1;
-  for (let i = 0; i < 5; i++) {
-    value += valueNoise3(x * freq, y * freq, z * freq, seed + i * 1013) * amp;
+  let value = 0;
+  let amp = 0.5;
+  let freq = 1;
+  for (let i = 0; i < 4; i++) {
+    value += noise3(x * freq, y * freq, z * freq, seed + i * 911) * amp;
     freq *= 2;
     amp *= 0.5;
   }
   return value;
 }
 
-function terrainAt(lat, lon, seed) {
+function biomeAt(lat, lon, seed) {
   const cl = Math.cos(lat);
   const x = cl * Math.cos(lon);
   const y = Math.sin(lat);
   const z = cl * Math.sin(lon);
 
-  const continent = fbm(x * 1.65, y * 1.65, z * 1.65, seed);
-  const detail = fbm(x * 5.2 + 17, y * 5.2 - 11, z * 5.2 + 7, seed + 77);
-  const mountain = fbm(x * 8.5 - 9, y * 8.5 + 4, z * 8.5 + 13, seed + 151);
+  // One continuous 3D noise field gives a seamless planet with no longitude seam.
+  const continent = fbm(x * 1.75, y * 1.75, z * 1.75, seed);
+  const detail = fbm(x * 4.5 + 9, y * 4.5 - 7, z * 4.5 + 3, seed + 37);
+  const value = continent * 0.78 + detail * 0.22;
 
-  const land = continent * 0.78 + detail * 0.22;
   const polar = Math.abs(y);
-  let elevation = (land - 0.505) * 17;
-  if (land < 0.50) elevation = -1;
-  if (elevation > 0) elevation += Math.max(0, mountain - 0.54) * 14;
-  if (polar > 0.84 && elevation > 0) elevation += (polar - 0.84) * 18;
-  return Math.max(-1, Math.min(MAX_HEIGHT, Math.floor(elevation)));
+  if (polar > 0.86 && value > 0.45) return 'snow';
+  if (value < 0.485) return value < 0.39 ? 'ocean' : 'shallow';
+  if (value > 0.64) return 'dry';
+  return 'land';
 }
 
-function material(type) {
-  return new THREE.MeshStandardMaterial({
-    color: palette[type],
-    roughness: 0.92,
-    metalness: 0.0,
-  });
-}
-
-function makeWorld(seedText) {
-  if (worldGroup) scene.remove(worldGroup);
-  worldGroup = new THREE.Group();
-  worldGroup.rotation.y = 0.18;
-  scene.add(worldGroup);
+function makeGlobe(seedText) {
+  if (globe) scene.remove(globe);
+  globe = new THREE.Group();
+  globe.rotation.y = 0.16;
+  scene.add(globe);
 
   const seed = hashString(seedText);
-  const blocks = { water: [], sand: [], grass: [], forest: [], rock: [], snow: [], dirt: [] };
+  const cells = { ocean: [], shallow: [], land: [], dry: [], snow: [] };
   const dummy = new THREE.Object3D();
-  let total = 0;
 
-  const radialStep = BLOCK;
-  const northCell = (Math.PI * RADIUS / LAT_STEPS);
-
+  // Every cell is a single surface voxel. No underground layers yet.
   for (let iy = 0; iy < LAT_STEPS; iy++) {
     const lat = -Math.PI / 2 + Math.PI * (iy + 0.5) / LAT_STEPS;
-    const eastCell = (2 * Math.PI * RADIUS * Math.max(Math.cos(lat), 0.32) / LON_STEPS);
-    const northScale = northCell * BLOCK_OVERLAP;
-    const eastScale = eastCell * BLOCK_OVERLAP;
+    const radial = new THREE.Vector3();
+    const north = new THREE.Vector3();
+    const east = new THREE.Vector3();
 
     for (let ix = 0; ix < LON_STEPS; ix++) {
-      const lon = -Math.PI + Math.PI * 2 * (ix + 0.5) / LON_STEPS;
-      const h = terrainAt(lat, lon, seed);
+      const lon = -Math.PI + Math.PI * (ix + 0.5) / LON_STEPS;
+      const cl = Math.cos(lat);
 
-      // Build the ground from the inner shell outward. Oceans are filled up to
-      // a shared sea level, so the blue surface is a continuous outer shell
-      // instead of a single layer sitting underneath exposed land.
-      const layers = Math.max(h + 1, SEA_LEVEL + 1);
+      radial.set(cl * Math.cos(lon), Math.sin(lat), cl * Math.sin(lon)).normalize();
+      east.set(-Math.sin(lon), 0, Math.cos(lon)).normalize();
+      north.crossVectors(radial, east).normalize();
 
-      const radial = new THREE.Vector3(
-        Math.cos(lat) * Math.cos(lon),
-        Math.sin(lat),
-        Math.cos(lat) * Math.sin(lon)
-      ).normalize();
-      const east = new THREE.Vector3(-Math.sin(lon), 0, Math.cos(lon)).normalize();
-      const north = new THREE.Vector3().crossVectors(radial, east).normalize();
       const basis = new THREE.Matrix4().makeBasis(east, radial, north);
       const q = new THREE.Quaternion().setFromRotationMatrix(basis);
 
-      for (let layer = 0; layer < layers; layer++) {
-        const radius = RADIUS + (layer + 0.5) * radialStep;
-        dummy.position.copy(radial).multiplyScalar(radius);
-        dummy.quaternion.copy(q);
-        dummy.scale.set(eastScale, radialStep * BLOCK_OVERLAP, northScale);
-        dummy.updateMatrix();
+      const type = biomeAt(lat, lon, seed);
+      const latitudeWidth = Math.PI * RADIUS / LAT_STEPS;
+      const longitudeWidth = (2 * Math.PI * RADIUS * Math.max(cl, 0.035)) / LON_STEPS;
 
-        let type;
-        const isWater = layer > h;
-        if (isWater) {
-          type = 'water';
-        } else if (Math.abs(lat) > 1.18 && layer === h) {
-          type = 'snow';
-        } else if (h <= 1 && layer === h) {
-          type = 'sand';
-        } else if (h >= 5 && layer === h) {
-          type = 'rock';
-        } else if (h >= 3 && layer === h) {
-          type = 'forest';
-        } else {
-          type = 'dirt';
-        }
+      dummy.position.copy(radial).multiplyScalar(RADIUS);
+      dummy.quaternion.copy(q);
 
-        blocks[type].push(dummy.matrix.clone());
-        total++;
-      }
+      // Tiny overlap keeps the globe visually solid while preserving the voxel look.
+      dummy.scale.set(
+        Math.max(0.98, longitudeWidth / BLOCK * 1.045),
+        1.02,
+        Math.max(0.98, latitudeWidth / BLOCK * 1.045)
+      );
+      dummy.updateMatrix();
+      cells[type].push(dummy.matrix.clone());
     }
   }
 
-  // Unit cube + per-cell scale lets every voxel match its local spherical cell.
-  const cube = new THREE.BoxGeometry(1, 1, 1);
-  for (const [type, matrices] of Object.entries(blocks)) {
+  const geometry = new THREE.BoxGeometry(BLOCK, BLOCK, BLOCK);
+  let total = 0;
+
+  for (const [type, matrices] of Object.entries(cells)) {
     if (!matrices.length) continue;
-    const mesh = new THREE.InstancedMesh(cube, material(type), matrices.length);
-    mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
-    matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
+    const mesh = new THREE.InstancedMesh(
+      geometry,
+      new THREE.MeshStandardMaterial({
+        color: palette[type],
+        roughness: 0.9,
+        metalness: 0
+      }),
+      matrices.length
+    );
+    matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix));
     mesh.instanceMatrix.needsUpdate = true;
-    worldGroup.add(mesh);
+    globe.add(mesh);
+    total += matrices.length;
   }
 
+  // Soft atmospheric shell only, so the planet still reads clearly against space.
   const atmosphere = new THREE.Mesh(
-    new THREE.SphereGeometry(RADIUS + (SEA_LEVEL + 1) * BLOCK + 9.5, 64, 32),
-    new THREE.MeshBasicMaterial({ color: 0x4f9cff, transparent: true, opacity: 0.055, side: THREE.BackSide, depthWrite: false })
+    new THREE.SphereGeometry(RADIUS + 2.8, 64, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0x4f9cff,
+      transparent: true,
+      opacity: 0.07,
+      side: THREE.BackSide,
+      depthWrite: false
+    })
   );
-  worldGroup.add(atmosphere);
+  globe.add(atmosphere);
 
-  document.querySelector('#stats').textContent = `Seed: ${seedText}  ·  ${total.toLocaleString()} voxel blocks  ·  ${LAT_STEPS}×${LON_STEPS} surface grid`;
+  document.querySelector('#stats').textContent =
+    `Seed: ${seedText}  ·  ${total.toLocaleString()} globe blocks  ·  ${LAT_STEPS}×${LON_STEPS} surface grid`;
 }
 
 function generate() {
@@ -234,19 +229,21 @@ function generate() {
   input.value = seed;
   document.querySelector('#loading').classList.remove('hidden');
   requestAnimationFrame(() => {
-    makeWorld(seed);
+    makeGlobe(seed);
     setTimeout(() => document.querySelector('#loading').classList.add('hidden'), 40);
   });
 }
 
 document.querySelector('#generate').addEventListener('click', generate);
 document.querySelector('#random').addEventListener('click', () => {
-  const adjectives = ['ORBIT','NOVA','TERRA','COSMOS','LUNA','VOID','AURORA','MARS','GALAXY','STAR'];
-  const a = adjectives[Math.floor(Math.random() * adjectives.length)];
-  document.querySelector('#seed').value = `${a}-${Math.floor(Math.random() * 1e9)}`;
+  const names = ['TERRA', 'NOVA', 'AURORA', 'GAIA', 'ORBIT', 'COSMOS', 'STAR', 'BLUE'];
+  const name = names[Math.floor(Math.random() * names.length)];
+  document.querySelector('#seed').value = `${name}-${Math.floor(Math.random() * 1e9)}`;
   generate();
 });
-document.querySelector('#seed').addEventListener('keydown', e => { if (e.key === 'Enter') generate(); });
+document.querySelector('#seed').addEventListener('keydown', e => {
+  if (e.key === 'Enter') generate();
+});
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
@@ -260,7 +257,7 @@ const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
   const t = clock.getElapsedTime();
-  if (worldGroup) worldGroup.position.y = Math.sin(t * 0.45) * 0.15;
+  if (globe) globe.position.y = Math.sin(t * 0.4) * 0.08;
   controls.update();
   renderer.render(scene, camera);
 }
