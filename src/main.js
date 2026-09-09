@@ -54,9 +54,10 @@ starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
 scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.42, sizeAttenuation: true, transparent: true, opacity: 0.82 })));
 
 const RADIUS = 28;
-const LAT_STEPS = 36;
-const LON_STEPS = 72;
-const BLOCK = 1.62;
+// Denser grid makes the outer globe read as one continuous voxel planet.
+const LAT_STEPS = 48;
+const LON_STEPS = 96;
+const BLOCK = 1.72;
 const MAX_HEIGHT = 7;
 let worldGroup = null;
 
@@ -122,7 +123,6 @@ function terrainAt(lat, lon, seed) {
   const detail = fbm(x * 5.2 + 17, y * 5.2 - 11, z * 5.2 + 7, seed + 77);
   const mountain = fbm(x * 8.5 - 9, y * 8.5 + 4, z * 8.5 + 13, seed + 151);
 
-  // Bias creates broad oceans and continents rather than noisy confetti.
   const land = continent * 0.78 + detail * 0.22;
   const polar = Math.abs(y);
   let elevation = (land - 0.505) * 17;
@@ -151,25 +151,37 @@ function makeWorld(seedText) {
   const dummy = new THREE.Object3D();
   let total = 0;
 
+  const radialStep = BLOCK;
+  const northCell = (Math.PI * RADIUS / LAT_STEPS) * 0.96;
+
   for (let iy = 0; iy < LAT_STEPS; iy++) {
     const lat = -Math.PI / 2 + Math.PI * (iy + 0.5) / LAT_STEPS;
+    const eastCell = (2 * Math.PI * RADIUS * Math.max(Math.cos(lat), 0.32) / LON_STEPS) * 0.96;
+    const eastScale = eastCell / BLOCK;
+    const northScale = northCell / BLOCK;
+
     for (let ix = 0; ix < LON_STEPS; ix++) {
       const lon = -Math.PI + Math.PI * 2 * (ix + 0.5) / LON_STEPS;
       const h = terrainAt(lat, lon, seed);
       const water = h < 0;
       const layers = water ? 1 : Math.max(1, h + 1);
 
-      const radial = new THREE.Vector3(Math.cos(lat) * Math.cos(lon), Math.sin(lat), Math.cos(lat) * Math.sin(lon)).normalize();
+      const radial = new THREE.Vector3(
+        Math.cos(lat) * Math.cos(lon),
+        Math.sin(lat),
+        Math.cos(lat) * Math.sin(lon)
+      ).normalize();
       const east = new THREE.Vector3(-Math.sin(lon), 0, Math.cos(lon)).normalize();
       const north = new THREE.Vector3().crossVectors(radial, east).normalize();
       const basis = new THREE.Matrix4().makeBasis(east, radial, north);
       const q = new THREE.Quaternion().setFromRotationMatrix(basis);
 
       for (let layer = 0; layer < layers; layer++) {
-        const radius = RADIUS + (layer + 0.5) * BLOCK;
+        const radius = RADIUS + (layer + 0.5) * radialStep;
         dummy.position.copy(radial).multiplyScalar(radius);
         dummy.quaternion.copy(q);
-        dummy.scale.set(1, 1, 1);
+        // Match the local tangent spacing so latitude/longitude gaps disappear.
+        dummy.scale.set(eastScale, 0.98, northScale);
         dummy.updateMatrix();
 
         let type = 'grass';
@@ -195,7 +207,6 @@ function makeWorld(seedText) {
     worldGroup.add(mesh);
   }
 
-  // Subtle atmosphere shell.
   const atmosphere = new THREE.Mesh(
     new THREE.SphereGeometry(RADIUS + 9.5, 64, 32),
     new THREE.MeshBasicMaterial({ color: 0x4f9cff, transparent: true, opacity: 0.055, side: THREE.BackSide, depthWrite: false })
