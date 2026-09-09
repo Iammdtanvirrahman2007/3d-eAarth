@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>3D eAarth • Seeded Voxel Globe</title>
+  <title>3D eAarth • Voxel Earth</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="style.css" />
   <script type="importmap">
@@ -17,14 +17,28 @@
 </head>
 <body>
   <div id="hud">
-    <div class="brand">🌍 <b>3D eAarth</b><span>Voxel Globe</span></div>
+    <div class="brand">🌍 <b>3D eAarth</b><span>Seeded Voxel Earth</span></div>
+    <div class="view-switch" role="tablist" aria-label="Earth view">
+      <button id="globeView" class="view-btn active" type="button">🌍 3D Globe</button>
+      <button id="mapView" class="view-btn" type="button">🗺️ 2D Map</button>
+    </div>
     <div class="controls">
       <input id="seed" value="TANVIR-2026" aria-label="World seed" />
-      <button id="generate">Generate World</button>
-      <button id="random">🎲 Random Seed</button>
+      <button id="generate" type="button">Generate World</button>
+      <button id="random" type="button">🎲 Random Seed</button>
     </div>
-    <div class="hint">Drag to orbit · Wheel to zoom · Seed = same world every time</div>
+    <div class="hint">Same seed = same Earth · Drag globe to orbit</div>
   </div>
+
+  <main id="mapScreen" class="map-screen hidden" aria-label="2D Earth map">
+    <div class="map-frame">
+      <canvas id="worldMap" width="1280" height="640"></canvas>
+      <div class="map-label top-left">2D WORLD MAP</div>
+      <div class="map-label top-right" id="mapSeed">Seed: TANVIR-2026</div>
+      <div class="map-coordinates">180°W&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0°&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;180°E</div>
+    </div>
+  </main>
+
   <div id="stats"></div>
   <div id="loading">Generating voxel Earth…</div>
   <script type="module" src="./src/main.js"></script>
