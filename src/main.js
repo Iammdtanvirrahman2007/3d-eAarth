@@ -33,7 +33,7 @@ const rim = new THREE.DirectionalLight(0x6f9dff, 1.25);
 rim.position.set(-45, -5, -35);
 scene.add(rim);
 
-// Star field: generated locally, so the project has no image assets to load.
+// Local star field, so the project has no image assets to load.
 const starGeo = new THREE.BufferGeometry();
 const starCount = 2600;
 const starPos = new Float32Array(starCount * 3);
@@ -54,11 +54,12 @@ starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
 scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.42, sizeAttenuation: true, transparent: true, opacity: 0.82 })));
 
 const RADIUS = 28;
-// Denser grid makes the outer globe read as one continuous voxel planet.
 const LAT_STEPS = 48;
 const LON_STEPS = 96;
 const BLOCK = 1.72;
+const SEA_LEVEL = 2;
 const MAX_HEIGHT = 7;
+const BLOCK_OVERLAP = 1.025;
 let worldGroup = null;
 
 const palette = {
@@ -113,7 +114,6 @@ function fbm(x, y, z, seed) {
 }
 
 function terrainAt(lat, lon, seed) {
-  // Sampling noise in 3D makes the longitude seam continuous.
   const cl = Math.cos(lat);
   const x = cl * Math.cos(lon);
   const y = Math.sin(lat);
@@ -152,19 +152,22 @@ function makeWorld(seedText) {
   let total = 0;
 
   const radialStep = BLOCK;
-  const northCell = (Math.PI * RADIUS / LAT_STEPS) * 0.96;
+  const northCell = (Math.PI * RADIUS / LAT_STEPS);
 
   for (let iy = 0; iy < LAT_STEPS; iy++) {
     const lat = -Math.PI / 2 + Math.PI * (iy + 0.5) / LAT_STEPS;
-    const eastCell = (2 * Math.PI * RADIUS * Math.max(Math.cos(lat), 0.32) / LON_STEPS) * 0.96;
-    const eastScale = eastCell / BLOCK;
-    const northScale = northCell / BLOCK;
+    const eastCell = (2 * Math.PI * RADIUS * Math.max(Math.cos(lat), 0.32) / LON_STEPS);
+    const northScale = northCell * BLOCK_OVERLAP;
+    const eastScale = eastCell * BLOCK_OVERLAP;
 
     for (let ix = 0; ix < LON_STEPS; ix++) {
       const lon = -Math.PI + Math.PI * 2 * (ix + 0.5) / LON_STEPS;
       const h = terrainAt(lat, lon, seed);
-      const water = h < 0;
-      const layers = water ? 1 : Math.max(1, h + 1);
+
+      // Build the ground from the inner shell outward. Oceans are filled up to
+      // a shared sea level, so the blue surface is a continuous outer shell
+      // instead of a single layer sitting underneath exposed land.
+      const layers = Math.max(h + 1, SEA_LEVEL + 1);
 
       const radial = new THREE.Vector3(
         Math.cos(lat) * Math.cos(lon),
@@ -180,24 +183,33 @@ function makeWorld(seedText) {
         const radius = RADIUS + (layer + 0.5) * radialStep;
         dummy.position.copy(radial).multiplyScalar(radius);
         dummy.quaternion.copy(q);
-        // Match the local tangent spacing so latitude/longitude gaps disappear.
-        dummy.scale.set(eastScale, 0.98, northScale);
+        dummy.scale.set(eastScale, radialStep * BLOCK_OVERLAP, northScale);
         dummy.updateMatrix();
 
-        let type = 'grass';
-        if (water) type = 'water';
-        else if (Math.abs(lat) > 1.18) type = 'snow';
-        else if (h <= 1 && layer === h) type = 'sand';
-        else if (h >= 5 && layer === h) type = 'rock';
-        else if (h >= 3 && layer === h) type = 'forest';
-        else if (layer < h) type = 'dirt';
+        let type;
+        const isWater = layer > h;
+        if (isWater) {
+          type = 'water';
+        } else if (Math.abs(lat) > 1.18 && layer === h) {
+          type = 'snow';
+        } else if (h <= 1 && layer === h) {
+          type = 'sand';
+        } else if (h >= 5 && layer === h) {
+          type = 'rock';
+        } else if (h >= 3 && layer === h) {
+          type = 'forest';
+        } else {
+          type = 'dirt';
+        }
+
         blocks[type].push(dummy.matrix.clone());
         total++;
       }
     }
   }
 
-  const cube = new THREE.BoxGeometry(BLOCK * 0.98, BLOCK * 0.98, BLOCK * 0.98);
+  // Unit cube + per-cell scale lets every voxel match its local spherical cell.
+  const cube = new THREE.BoxGeometry(1, 1, 1);
   for (const [type, matrices] of Object.entries(blocks)) {
     if (!matrices.length) continue;
     const mesh = new THREE.InstancedMesh(cube, material(type), matrices.length);
@@ -208,7 +220,7 @@ function makeWorld(seedText) {
   }
 
   const atmosphere = new THREE.Mesh(
-    new THREE.SphereGeometry(RADIUS + 9.5, 64, 32),
+    new THREE.SphereGeometry(RADIUS + (SEA_LEVEL + 1) * BLOCK + 9.5, 64, 32),
     new THREE.MeshBasicMaterial({ color: 0x4f9cff, transparent: true, opacity: 0.055, side: THREE.BackSide, depthWrite: false })
   );
   worldGroup.add(atmosphere);
